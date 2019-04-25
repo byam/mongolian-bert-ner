@@ -11,7 +11,7 @@ from nltk import word_tokenize
 from pytorch_pretrained_bert.modeling import (CONFIG_NAME, WEIGHTS_NAME,
                                               BertConfig,
                                               BertForTokenClassification)
-from pytorch_pretrained_bert.tokenization import BertTokenizer
+from cased_bert_base_pytorch.tokenization_sentencepiece import FullTokenizer
 
 
 class Ner:
@@ -31,7 +31,7 @@ class Ner:
         config = BertConfig(output_config_file)
         model = BertForTokenClassification(config, num_labels=model_config["num_labels"])
         model.load_state_dict(torch.load(output_model_file))
-        tokenizer = BertTokenizer.from_pretrained(model_config["bert_model"],do_lower_case=False)
+        tokenizer = FullTokenizer(model_file='cased_bert_base_pytorch/mn_cased.model', vocab_file='cased_bert_base_pytorch/mn_cased.vocab', do_lower_case=False)
         return model, tokenizer, model_config
 
     def tokenize(self, text: str):
