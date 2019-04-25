@@ -39,7 +39,7 @@ avg / total     0.8432    0.8765    0.8592       421
 avg / total     0.7829    0.8496    0.8146       452
 ```
 
-## Pretrained model download from [here](https://drive.google.com/open?id=1pCvITS3ciu-h10toW868rOviQbrTjBFn)
+## Pre-trained NER model - download from [here](https://drive.google.com/open?id=1pCvITS3ciu-h10toW868rOviQbrTjBFn)
 Then unzip inside in this repo. 
 
 # Prediction on given text
