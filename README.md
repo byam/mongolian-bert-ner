@@ -42,7 +42,7 @@ avg / total     0.7829    0.8496    0.8146       452
 ## Pre-trained NER model - download from [here](https://drive.google.com/open?id=1pCvITS3ciu-h10toW868rOviQbrTjBFn)
 Then unzip inside in this repo. 
 
-# Prediction on given text
+# Run prediction inside python module
 
 ```python
 from bert import Ner
@@ -74,9 +74,12 @@ print(output)
 # 	'хариулсан': {'tag': 'O', 'confidence': 0.9999463558197021}, 
 # 	'юм': {'tag': 'O', 'confidence': 0.9513341784477234}
 # }
-
-
 ```
+# Run web app to predict
+
+Run `python app.py` - runs web server on http://localhost:5000/ 
+
+![Flak webapp](images/image.png)
 
 # Train Valid Test split
 Refer to `notebook/CoNLL conversion.ipynb` file.
