@@ -4,6 +4,7 @@ Use [Mongolian pre-trained BERT](https://github.com/tugstugi/mongolian-bert) for
 
 
 # Requirements
+First download pre-trained cased BERT-Base model from [here](https://drive.google.com/file/d/11Adpo6DorPgpE8z1lL6rvZAMHLEfnJwv)
 
 -  `python3`
 - `pip3 install -r requirements.txt`
