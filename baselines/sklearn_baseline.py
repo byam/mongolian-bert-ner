@@ -1,6 +1,6 @@
 import sklearn_crfsuite
 from seqeval.metrics import classification_report
-from sklearn_crfsuite import metrics
+# from sklearn_crfsuite import metrics
 from collections import Counter
 
 
@@ -28,6 +28,7 @@ classes = list(set([item for sublist in [i[1] for i in train_data] for item in s
 classes.remove('O')
 
 print(Counter([item for sublist in [i[1] for i in test_data] for item in sublist]))
+
 crf = sklearn_crfsuite.CRF(
     algorithm='lbfgs',
     c1=0.1,
@@ -39,8 +40,8 @@ crf = sklearn_crfsuite.CRF(
 crf.fit([i[0] for i in train_data], [i[1] for i in train_data])
 
 # valid
-# y_pred = crf.predict([i[0] for i in valid_data])
-# print(classification_report([i[1] for i in valid_data], y_pred, labels=classes))
+y_pred = crf.predict([i[0] for i in valid_data])
+print(classification_report([i[1] for i in valid_data], y_pred))
 # test
 y_pred = crf.predict([i[0] for i in test_data])
 assert len([i[1] for i in test_data]) == len(y_pred)

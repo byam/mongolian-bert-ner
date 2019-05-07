@@ -6,3 +6,4 @@ nltk==3.4
 sentencepiece
 tensorflow
 flask
+pandas
