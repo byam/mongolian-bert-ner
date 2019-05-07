@@ -1,6 +1,7 @@
 # BERT NER
 
 :mongolia: Use [Mongolian pre-trained BERT](https://github.com/tugstugi/mongolian-bert) for finetuning [NER](https://en.wikipedia.org/wiki/Named-entity_recognition) task on [Mongolian NER dataset](https://github.com/tugstugi/mongolian-nlp/blob/master/datasets/NER_v1.0.json.gz)
+
 :bangbang: Checkout [experiment](https://github.com/enod/mongolian-bert-ner/tree/experiment) branch for comparable to baselines result. 
 
 # Requirements
