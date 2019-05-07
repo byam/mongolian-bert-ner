@@ -16,6 +16,7 @@ First download pre-trained cased BERT-Base model from [here](https://drive.googl
 
 # Result
 ## BERT
+Following evaluations done by using [seqeval](https://github.com/chakki-works/seqeval) sequence labeling toolkit.
 ### Validation Data
 ```
              precision    recall  f1-score   support
@@ -38,7 +39,31 @@ avg / total     0.7882    0.8537    0.8195      1319
 
 avg / total     0.7712    0.8384    0.8033      1448
 ```
-## sklearn-crfsuite
+## [2016 NER SOTA](https://www.aclweb.org/anthology/P16-1101) 
+Used NCRF++ toolkit(refer to NCRFpp directory) with a combination of `Char CNN + Word LSTM + CRF` 
+### Validation Data
+```
+             precision    recall  f1-score   support
+
+        ORG       0.72      0.58      0.64       356
+       MISC       0.53      0.46      0.49       213
+        LOC       0.73      0.72      0.73       511
+        PER       0.61      0.62      0.61       239
+
+avg / total       0.67      0.62      0.65      1319
+```
+### Test Data
+```
+             precision    recall  f1-score   support
+
+        PER       0.60      0.61      0.60       273
+        LOC       0.73      0.71      0.72       540
+        ORG       0.70      0.53      0.60       369
+       MISC       0.59      0.49      0.54       266
+
+avg / total       0.67      0.61      0.64      1448
+```
+## [sklearn-crfsuite](https://sklearn-crfsuite.readthedocs.io/en/latest/)
 ### Validation Data
 ```
            precision    recall  f1-score   support
@@ -108,3 +133,8 @@ Run `python app.py` - runs web server on http://localhost:5000/
 
 # Train Valid Test split
 Refer to `notebook/CoNLL conversion.ipynb` file.
+
+# ToDo
+- [ ] [Add 2017 SOTA](https://arxiv.org/pdf/1709.04109.pdf)
+- [ ] Add either ELMo/ULMFIT
+- [ ] Change webapp inferface to [AllenNLP demo](https://demo.allennlp.org/named-entity-recognition)
