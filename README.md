@@ -15,28 +15,53 @@ First download pre-trained cased BERT-Base model from [here](https://drive.googl
 
 
 # Result
-
+## BERT
 ### Validation Data
 ```
              precision    recall  f1-score   support
 
-        LOC     0.8710    0.9310    0.9000       232
-       MISC     0.7838    0.7945    0.7891        73
-        PER     0.9130    0.9545    0.9333        22
-        ORG     0.8043    0.7872    0.7957        94
+       MISC     0.6763    0.7653    0.7181       213
+        ORG     0.7878    0.8343    0.8104       356
+        LOC     0.8205    0.8767    0.8477       511
+        PER     0.8195    0.9121    0.8634       239
 
-avg / total     0.8432    0.8765    0.8592       421
+avg / total     0.7882    0.8537    0.8195      1319
 ```
 ### Test Data
 ```
              precision    recall  f1-score   support
 
-        ORG     0.7411    0.8300    0.7830       100
-        LOC     0.8340    0.8852    0.8588       244
-        PER     0.8182    0.8438    0.8308        32
-       MISC     0.6591    0.7632    0.7073        76
+       MISC     0.6986    0.7669    0.7312       266
+        PER     0.8276    0.8791    0.8526       273
+        ORG     0.7766    0.8293    0.8021       369
+        LOC     0.7746    0.8593    0.8147       540
 
-avg / total     0.7829    0.8496    0.8146       452
+avg / total     0.7712    0.8384    0.8033      1448
+```
+## sklearn-crfsuite
+### Validation Data
+```
+           precision    recall  f1-score   support
+
+      LOC       0.53      0.45      0.49       511
+      ORG       0.53      0.39      0.45       356
+      PER       0.53      0.39      0.45       239
+     MISC       0.39      0.21      0.27       213
+
+micro avg       0.51      0.38      0.44      1319
+macro avg       0.51      0.38      0.43      1319
+```
+### Test Data
+```
+           precision    recall  f1-score   support
+
+      LOC       0.54      0.46      0.50       540
+      ORG       0.54      0.40      0.46       369
+     MISC       0.41      0.25      0.31       266
+      PER       0.55      0.43      0.48       273
+
+micro avg       0.52      0.40      0.45      1448
+macro avg       0.52      0.40      0.45      1448
 ```
 
 ## Pre-trained NER model - download from [here](https://drive.google.com/open?id=1pCvITS3ciu-h10toW868rOviQbrTjBFn)
