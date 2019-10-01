@@ -16,7 +16,7 @@ mv cased_bert_base_pytorch/bert_config.json cased_bert_base_pytorch/config.json
 
 # Run
 
-`python run_ner.py --data_dir=data/ --bert_model=cased_bert_base_pytorch --task_name=ner --output_dir=out --max_seq_length=50 --do_train --num_train_epochs 5 --do_eval --warmup_proportion=0.1`
+`python run_ner.py --data_dir=data/ --bert_model=cased_bert_base_pytorch --task_name=ner --output_dir=out_base --max_seq_length=50 --do_train --num_train_epochs 5 --do_eval --warmup_proportion=0.1`
 
 
 # Result
