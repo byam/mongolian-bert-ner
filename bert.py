@@ -8,18 +8,17 @@ import os
 import torch
 import torch.nn.functional as F
 from nltk import word_tokenize
-from pytorch_pretrained_bert.modeling import (CONFIG_NAME, WEIGHTS_NAME,
-                                              BertConfig,
-                                              BertForTokenClassification)
+from pytorch_transformers import (BertConfig, BertForTokenClassification)
 from cased_bert_base_pytorch.tokenization_sentencepiece import FullTokenizer
 
 
 class BertNer(BertForTokenClassification):
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, valid_ids=None):
-        sequence_output, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+        sequence_output = self.bert(input_ids, token_type_ids, attention_mask, head_mask=None)[0]
         batch_size, max_len, feat_dim = sequence_output.shape
-        valid_output = torch.zeros(batch_size, max_len, feat_dim, dtype=torch.float32)
+        valid_output = torch.zeros(batch_size, max_len, feat_dim, dtype=torch.float32,
+                                   device='cuda' if torch.cuda.is_available() else 'cpu')
         for i in range(batch_size):
             jj = -1
             for j in range(max_len):
@@ -38,16 +37,14 @@ class Ner:
         self.label_map = self.model_config["label_map"]
         self.max_seq_length = self.model_config["max_seq_length"]
         self.label_map = {int(k): v for k, v in self.label_map.items()}
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = self.model.to(self.device)
         self.model.eval()
 
     def load_model(self, model_dir: str, model_config: str = "model_config.json"):
         model_config = os.path.join(model_dir, model_config)
         model_config = json.load(open(model_config))
-        output_config_file = os.path.join(model_dir, CONFIG_NAME)
-        output_model_file = os.path.join(model_dir, WEIGHTS_NAME)
-        config = BertConfig(output_config_file)
-        model = BertNer(config, num_labels=model_config["num_labels"])
-        model.load_state_dict(torch.load(output_model_file))
+        model = BertNer.from_pretrained(model_dir)
         tokenizer = FullTokenizer(model_file='cased_bert_base_pytorch/mn_cased.model',
                                   vocab_file='cased_bert_base_pytorch/mn_cased.vocab', do_lower_case=False)
         return model, tokenizer, model_config
@@ -90,25 +87,32 @@ class Ner:
 
     def predict(self, text: str):
         input_ids, input_mask, segment_ids, valid_ids = self.preprocess(text)
-        input_ids = torch.tensor([input_ids], dtype=torch.long)
-        input_mask = torch.tensor([input_mask], dtype=torch.long)
-        segment_ids = torch.tensor([segment_ids], dtype=torch.long)
-        valid_ids = torch.tensor([valid_ids], dtype=torch.long)
+        input_ids = torch.tensor([input_ids], dtype=torch.long, device=self.device)
+        input_mask = torch.tensor([input_mask], dtype=torch.long, device=self.device)
+        segment_ids = torch.tensor([segment_ids], dtype=torch.long, device=self.device)
+        valid_ids = torch.tensor([valid_ids], dtype=torch.long, device=self.device)
         with torch.no_grad():
             logits = self.model(input_ids, segment_ids, input_mask, valid_ids)
         logits = F.softmax(logits, dim=2)
         logits_label = torch.argmax(logits, dim=2)
-        logits_label = logits_label.detach().cpu().numpy()
-        # import ipdb; ipdb.set_trace()
-        logits_confidence = [values[label].item() for values, label in zip(logits[0], logits_label[0])]
+        logits_label = logits_label.detach().cpu().numpy().tolist()[0]
 
-        logits_label = [logits_label[0][index] for index, i in enumerate(input_mask[0]) if i.item() == 1]
-        logits_label.pop(0)
-        logits_label.pop()
+        logits_confidence = [values[label].item() for values, label in zip(logits[0], logits_label)]
 
-        labels = [self.label_map[label] for label in logits_label]
+        logits = []
+        pos = 0
+        for index, mask in enumerate(valid_ids[0]):
+            if index == 0:
+                continue
+            if mask == 1:
+                logits.append((logits_label[index - pos], logits_confidence[index - pos]))
+            else:
+                pos += 1
+        logits.pop()
+
+        labels = [(self.label_map[label], confidence) for label, confidence in logits]
         words = word_tokenize(text)
         assert len(labels) == len(words)
-        output = {word: {"tag": label, "confidence": confidence} for word, label, confidence in
-                  zip(words, labels, logits_confidence)}
+        output = [{"word": word, "tag": label, "confidence": confidence} for word, (label, confidence) in
+                  zip(words, labels)]
         return output

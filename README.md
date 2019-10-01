@@ -9,9 +9,14 @@ First download pre-trained cased BERT-Base model from [here](https://drive.googl
 -  `python3`
 - `pip3 install -r requirements.txt`
 
+Rename following file for compatibility:
+```
+mv cased_bert_base_pytorch/bert_config.json cased_bert_base_pytorch/config.json
+```
+
 # Run
 
-`python run_ner.py --data_dir=data/ --bert_model=bert-base-cased --task_name=ner --output_dir=out --max_seq_length=50 --do_train --num_train_epochs 5 --do_eval --do_test --warmup_proportion=0.4`
+`python run_ner.py --data_dir=data/ --bert_model=cased_bert_base_pytorch --task_name=ner --output_dir=out --max_seq_length=50 --do_train --num_train_epochs 5 --do_eval --warmup_proportion=0.1`
 
 
 # Result
@@ -21,23 +26,23 @@ Following evaluations done by using [seqeval](https://github.com/chakki-works/se
 ```
              precision    recall  f1-score   support
 
-       MISC     0.6763    0.7653    0.7181       213
-        ORG     0.7878    0.8343    0.8104       356
-        LOC     0.8205    0.8767    0.8477       511
-        PER     0.8195    0.9121    0.8634       239
+        LOC     0.8321    0.8630    0.8473       511
+       MISC     0.6790    0.7746    0.7237       213
+        PER     0.8053    0.8828    0.8423       239
+        ORG     0.7952    0.8399    0.8169       356
 
-avg / total     0.7882    0.8537    0.8195      1319
+avg / total     0.7926    0.8461    0.8182      1319
 ```
 ### Test Data
 ```
              precision    recall  f1-score   support
 
-       MISC     0.6986    0.7669    0.7312       266
-        PER     0.8276    0.8791    0.8526       273
-        ORG     0.7766    0.8293    0.8021       369
-        LOC     0.7746    0.8593    0.8147       540
+        ORG     0.7761    0.8266    0.8005       369
+       MISC     0.6851    0.7444    0.7135       266
+        LOC     0.7894    0.8537    0.8203       540
+        PER     0.8287    0.8681    0.8479       273
 
-avg / total     0.7712    0.8384    0.8033      1448
+avg / total     0.7742    0.8294    0.8008      1448
 ```
 ## [2016 NER SOTA](https://www.aclweb.org/anthology/P16-1101) 
 Used NCRF++ toolkit(refer to NCRFpp directory) with a combination of `Char CNN + Word LSTM + CRF` 

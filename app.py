@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request
 from bert import Ner
 
-model = Ner("out/")
+model = Ner("out_base/")
 app = Flask(__name__)
 app.jinja_env.filters['zip'] = zip
 
@@ -19,11 +19,11 @@ def process():
         tags = []
         scores = []
         print(output)
-        for word, tag in output.items():
-            if tag['tag'] != 'O':
-                entities.append(word)
-                tags.append(tag['tag'])
-                scores.append(tag['confidence'])
+        for item in output:
+            if item['tag'] != 'O':
+                entities.append(item['word'])
+                tags.append(item['tag'])
+                scores.append(item['confidence'])
         return render_template("index.html", entities=entities, tags=tags, scores=scores, num_of_results=len(entities), text=rawtext)
 
 

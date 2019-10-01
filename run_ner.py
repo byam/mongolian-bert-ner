@@ -11,19 +11,17 @@ import sys
 import numpy as np
 import torch
 import torch.nn.functional as F
-from pytorch_pretrained_bert.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
-from pytorch_pretrained_bert.modeling import (CONFIG_NAME, WEIGHTS_NAME,
-                                              BertConfig,
-                                              BertForTokenClassification)
-from pytorch_pretrained_bert.optimization import BertAdam, warmup_linear
+from pytorch_transformers import (WEIGHTS_NAME, AdamW, BertConfig,
+                                  BertForTokenClassification, BertTokenizer,
+                                  WarmupLinearSchedule)
 from cased_bert_base_pytorch.tokenization_sentencepiece import FullTokenizer
-from seqeval.metrics import classification_report
 from torch import nn
-from torch.nn import CrossEntropyLoss
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
+
+from seqeval.metrics import classification_report
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
@@ -35,7 +33,7 @@ class Ner(BertForTokenClassification):
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, valid_ids=None,
                 attention_mask_label=None):
-        sequence_output, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+        sequence_output = self.bert(input_ids, token_type_ids, attention_mask, head_mask=None)[0]
         batch_size, max_len, feat_dim = sequence_output.shape
         valid_output = torch.zeros(batch_size, max_len, feat_dim, dtype=torch.float32, device='cuda')
         for i in range(batch_size):
@@ -48,7 +46,7 @@ class Ner(BertForTokenClassification):
         logits = self.classifier(sequence_output)
 
         if labels is not None:
-            loss_fct = CrossEntropyLoss(ignore_index=0)
+            loss_fct = nn.CrossEntropyLoss(ignore_index=0)
             # Only keep active parts of the loss
             attention_mask_label = None
             if attention_mask_label is not None:
@@ -68,7 +66,6 @@ class InputExample(object):
 
     def __init__(self, guid, text_a, text_b=None, label=None):
         """Constructs a InputExample.
-
         Args:
             guid: Unique id for the example.
             text_a: string. The untokenized text of the first sequence. For single
@@ -99,8 +96,6 @@ class InputFeatures(object):
 def readfile(filename):
     '''
     read file
-    return format :
-    [ ['EU', 'B-ORG'], ['rejects', 'O'], ['German', 'B-MISC'], ['call', 'O'], ['to', 'O'], ['boycott', 'O'], ['British', 'B-MISC'], ['lamb', 'O'], ['.', 'O'] ]
     '''
     f = open(filename)
     data = []
@@ -274,10 +269,8 @@ def main():
                         type=str,
                         required=True,
                         help="The input data dir. Should contain the .tsv files (or other data files) for the task.")
-    parser.add_argument("--bert_model", default=None, type=str, required=True,
-                        help="Bert pre-trained model selected in the list: bert-base-uncased, "
-                             "bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, "
-                             "bert-base-multilingual-cased, bert-base-chinese.")
+    parser.add_argument("--bert_model", default='cased_bert_base_pytorch', type=str, required=True,
+                        help="cased_bert_base_pytorch")
     parser.add_argument("--task_name",
                         default=None,
                         type=str,
@@ -306,14 +299,11 @@ def main():
     parser.add_argument("--do_eval",
                         action='store_true',
                         help="Whether to run eval on the dev set.")
-    parser.add_argument("--do_test",
-                        action='store_true',
-                        help="Whether to run eval on the test set.")
     parser.add_argument("--do_lower_case",
                         action='store_true',
                         help="Set this flag if you are using an uncased model.")
     parser.add_argument("--train_batch_size",
-                        default=32,
+                        default=96,
                         type=int,
                         help="Total batch size for training.")
     parser.add_argument("--eval_batch_size",
@@ -333,6 +323,12 @@ def main():
                         type=float,
                         help="Proportion of training to perform linear learning rate warmup for. "
                              "E.g., 0.1 = 10%% of training.")
+    parser.add_argument("--weight_decay", default=0.01, type=float,
+                        help="Weight deay if we apply some.")
+    parser.add_argument("--adam_epsilon", default=1e-8, type=float,
+                        help="Epsilon for Adam optimizer.")
+    parser.add_argument("--max_grad_norm", default=1.0, type=float,
+                        help="Max gradient norm.")
     parser.add_argument("--no_cuda",
                         action='store_true',
                         help="Whether not to use CUDA when available")
@@ -351,6 +347,9 @@ def main():
     parser.add_argument('--fp16',
                         action='store_true',
                         help="Whether to use 16-bit float precision instead of 32-bit")
+    parser.add_argument('--fp16_opt_level', type=str, default='O1',
+                        help="For fp16: Apex AMP optimization level selected in ['O0', 'O1', 'O2', and 'O3']."
+                             "See details at https://nvidia.github.io/apex/amp.html")
     parser.add_argument('--loss_scale',
                         type=float, default=0,
                         help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
@@ -412,7 +411,7 @@ def main():
                               vocab_file='cased_bert_base_pytorch/mn_cased.vocab', do_lower_case=False)
 
     train_examples = None
-    num_train_optimization_steps = None
+    num_train_optimization_steps = 0
     if args.do_train:
         train_examples = processor.get_train_examples(args.data_dir)
         num_train_optimization_steps = int(
@@ -420,54 +419,45 @@ def main():
         if args.local_rank != -1:
             num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
 
-    # Prepare model
-    cache_dir = args.cache_dir if args.cache_dir else os.path.join(str(PYTORCH_PRETRAINED_BERT_CACHE),
-                                                                   'distributed_{}'.format(args.local_rank))
-    model = Ner.from_pretrained(args.bert_model,
-                                cache_dir=cache_dir,
-                                num_labels=num_labels)
-    if args.fp16:
-        model.half()
-    model.to(device)
-    if args.local_rank != -1:
-        try:
-            from apex.parallel import DistributedDataParallel as DDP
-        except ImportError:
-            raise ImportError(
-                "Please install apex from https://www.github.com/nvidia/apex to use distributed and fp16 training.")
+    if args.local_rank not in [-1, 0]:
+        torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
-        model = DDP(model)
-    elif n_gpu > 1:
-        model = torch.nn.DataParallel(model)
+    # Prepare model
+    config = BertConfig.from_pretrained(args.bert_model, num_labels=num_labels, finetuning_task=args.task_name)
+    model = Ner.from_pretrained(args.bert_model,
+                                from_tf=False,
+                                config=config)
+
+    if args.local_rank == 0:
+        torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
+
+    model.to(device)
 
     param_optimizer = list(model.named_parameters())
-    no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+    no_decay = ['bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
-        {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
+        {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
+         'weight_decay': args.weight_decay},
         {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
+    warmup_steps = int(args.warmup_proportion * num_train_optimization_steps)
+    optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
+    scheduler = WarmupLinearSchedule(optimizer, warmup_steps=warmup_steps, t_total=num_train_optimization_steps)
     if args.fp16:
         try:
-            from apex.optimizers import FP16_Optimizer
-            from apex.optimizers import FusedAdam
+            from apex import amp
         except ImportError:
-            raise ImportError(
-                "Please install apex from https://www.github.com/nvidia/apex to use distributed and fp16 training.")
+            raise ImportError("Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
+        model, optimizer = amp.initialize(model, optimizer, opt_level=args.fp16_opt_level)
 
-        optimizer = FusedAdam(optimizer_grouped_parameters,
-                              lr=args.learning_rate,
-                              bias_correction=False,
-                              max_grad_norm=1.0)
-        if args.loss_scale == 0:
-            optimizer = FP16_Optimizer(optimizer, dynamic_loss_scale=True)
-        else:
-            optimizer = FP16_Optimizer(optimizer, static_loss_scale=args.loss_scale)
+    # multi-gpu training (should be after apex fp16 initialization)
+    if n_gpu > 1:
+        model = torch.nn.DataParallel(model)
 
-    else:
-        optimizer = BertAdam(optimizer_grouped_parameters,
-                             lr=args.learning_rate,
-                             warmup=args.warmup_proportion,
-                             t_total=num_train_optimization_steps)
+    if args.local_rank != -1:
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank],
+                                                          output_device=args.local_rank,
+                                                          find_unused_parameters=True)
 
     global_step = 0
     nb_tr_steps = 0
@@ -508,32 +498,25 @@ def main():
                     loss = loss / args.gradient_accumulation_steps
 
                 if args.fp16:
-                    optimizer.backward(loss)
+                    with amp.scale_loss(loss, optimizer) as scaled_loss:
+                        scaled_loss.backward()
+                    torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), args.max_grad_norm)
                 else:
                     loss.backward()
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
                 tr_loss += loss.item()
                 nb_tr_examples += input_ids.size(0)
                 nb_tr_steps += 1
                 if (step + 1) % args.gradient_accumulation_steps == 0:
-                    if args.fp16:
-                        # modify learning rate with special warm up BERT uses
-                        # if args.fp16 is False, BertAdam is used that handles this automatically
-                        lr_this_step = args.learning_rate * warmup_linear(global_step / num_train_optimization_steps,
-                                                                          args.warmup_proportion)
-                        for param_group in optimizer.param_groups:
-                            param_group['lr'] = lr_this_step
                     optimizer.step()
-                    optimizer.zero_grad()
+                    scheduler.step()  # Update learning rate schedule
+                    model.zero_grad()
                     global_step += 1
 
         # Save a trained model and the associated configuration
         model_to_save = model.module if hasattr(model, 'module') else model  # Only save the model it-self
-        output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
-        torch.save(model_to_save.state_dict(), output_model_file)
-        output_config_file = os.path.join(args.output_dir, CONFIG_NAME)
-        with open(output_config_file, 'w') as f:
-            f.write(model_to_save.config.to_json_string())
+        model_to_save.save_pretrained(args.output_dir)
         label_map = {i: label for i, label in enumerate(label_list, 1)}
         model_config = {"bert_model": args.bert_model, "do_lower": args.do_lower_case,
                         "max_seq_length": args.max_seq_length, "num_labels": len(label_list) + 1,
@@ -541,80 +524,17 @@ def main():
         json.dump(model_config, open(os.path.join(args.output_dir, "model_config.json"), "w"))
         # Load a trained model and config that you have fine-tuned
     else:
-        output_config_file = os.path.join(args.output_dir, CONFIG_NAME)
-        output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
-        config = BertConfig(output_config_file)
-        model = Ner(config, num_labels=num_labels)
-        model.load_state_dict(torch.load(output_model_file))
+        # Load a trained model and vocabulary that you have fine-tuned
+        model = Ner.from_pretrained(args.output_dir)
+        tokenizer = FullTokenizer(model_file='cased_bert_base_pytorch/mn_cased.model',
+                                  vocab_file='cased_bert_base_pytorch/mn_cased.vocab', do_lower_case=False)
 
     model.to(device)
 
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        eval_examples = processor.get_dev_examples(args.data_dir)
-        eval_features = convert_examples_to_features(eval_examples, label_list, args.max_seq_length, tokenizer)
-        logger.info("***** Running evaluation on validation dataset *****")
-        logger.info("  Num examples = %d", len(eval_examples))
-        logger.info("  Batch size = %d", args.eval_batch_size)
-        all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
-        all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
-        all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
-        all_label_ids = torch.tensor([f.label_id for f in eval_features], dtype=torch.long)
-        all_valid_ids = torch.tensor([f.valid_ids for f in eval_features], dtype=torch.long)
-        all_lmask_ids = torch.tensor([f.label_mask for f in eval_features], dtype=torch.long)
-        eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_valid_ids,
-                                  all_lmask_ids)
-        # Run prediction for full data
-        eval_sampler = SequentialSampler(eval_data)
-        eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.eval_batch_size)
-        model.eval()
-        eval_loss, eval_accuracy = 0, 0
-        nb_eval_steps, nb_eval_examples = 0, 0
-        y_true = []
-        y_pred = []
-        label_map = {i: label for i, label in enumerate(label_list, 1)}
-        for input_ids, input_mask, segment_ids, label_ids, valid_ids, l_mask in tqdm(eval_dataloader,
-                                                                                     desc="Evaluating"):
-            input_ids = input_ids.to(device)
-            input_mask = input_mask.to(device)
-            segment_ids = segment_ids.to(device)
-            valid_ids = valid_ids.to(device)
-            label_ids = label_ids.to(device)
-            l_mask = l_mask.to(device)
-
-            with torch.no_grad():
-                logits = model(input_ids, segment_ids, input_mask, valid_ids=valid_ids, attention_mask_label=l_mask)
-
-            logits = torch.argmax(F.log_softmax(logits, dim=2), dim=2)
-            logits = logits.detach().cpu().numpy()
-            label_ids = label_ids.to('cpu').numpy()
-            input_mask = input_mask.to('cpu').numpy()
-
-            for i, label in enumerate(label_ids):
-                temp_1 = []
-                temp_2 = []
-                for j, m in enumerate(label):
-                    if j == 0:
-                        continue
-                    elif label_ids[i][j] == 11:
-                        y_true.append(temp_1)
-                        y_pred.append(temp_2)
-                        break
-                    else:
-                        temp_1.append(label_map[label_ids[i][j]])
-                        temp_2.append(label_map[logits[i][j]])
-
-        report = classification_report(y_true, y_pred, digits=4)
-        logger.info("\n%s", report)
-        output_eval_file = os.path.join(args.output_dir, "eval_results_dev.txt")
-        with open(output_eval_file, "w") as writer:
-            logger.info("***** Eval results *****")
-            logger.info("\n%s", report)
-            writer.write(report)
-
-    if args.do_test and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         eval_examples = processor.get_test_examples(args.data_dir)
         eval_features = convert_examples_to_features(eval_examples, label_list, args.max_seq_length, tokenizer)
-        logger.info("***** Running evaluation on test dataset *****")
+        logger.info("***** Running evaluation *****")
         logger.info("  Num examples = %d", len(eval_examples))
         logger.info("  Batch size = %d", args.eval_batch_size)
         all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
@@ -657,7 +577,7 @@ def main():
                 for j, m in enumerate(label):
                     if j == 0:
                         continue
-                    elif label_ids[i][j] == 11:
+                    elif label_ids[i][j] == len(label_map):
                         y_true.append(temp_1)
                         y_pred.append(temp_2)
                         break
@@ -667,7 +587,7 @@ def main():
 
         report = classification_report(y_true, y_pred, digits=4)
         logger.info("\n%s", report)
-        output_eval_file = os.path.join(args.output_dir, "eval_results_test.txt")
+        output_eval_file = os.path.join(args.output_dir, "eval_results.txt")
         with open(output_eval_file, "w") as writer:
             logger.info("***** Eval results *****")
             logger.info("\n%s", report)
