@@ -16,7 +16,7 @@ mv cased_bert_base_pytorch/bert_config.json cased_bert_base_pytorch/config.json
 
 # Run
 
-`python run_ner.py --data_dir=data/ --bert_model=cased_bert_base_pytorch --task_name=ner --output_dir=out_base --max_seq_length=50 --do_train --num_train_epochs 5 --do_eval --warmup_proportion=0.1`
+`python run_ner.py --data_dir=data/ --bert_model=cased_bert_base_pytorch --task_name=ner --output_dir=out_base --max_seq_length=50 --do_train --num_train_epochs 3 --do_eval --do_test --warmup_proportion=0.1`
 
 
 # Result
@@ -132,14 +132,14 @@ print(output)
 ```
 # Run web app to predict
 
-Run `python app.py` - runs web server on http://localhost:5000/ 
+Run `python app.py` - runs web server on http://localhost:5000/ where you can query the trained model
 
-![Flak webapp](images/image.png)
+![Flask webapp](images/image.png)
 
 # Train Valid Test split
 Refer to `notebook/CoNLL conversion.ipynb` file.
 
 # ToDo
 - [ ] [Add 2017 SOTA](https://arxiv.org/pdf/1709.04109.pdf)
-- [ ] Add either ELMo/ULMFIT
 - [ ] Change webapp inferface to [AllenNLP demo](https://demo.allennlp.org/named-entity-recognition)
+- [ ] Tensorboard monitoring

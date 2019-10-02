@@ -299,11 +299,14 @@ def main():
     parser.add_argument("--do_eval",
                         action='store_true',
                         help="Whether to run eval on the dev set.")
+    parser.add_argument("--do_test",
+                        action='store_true',
+                        help="Whether to run eval on the test set.")
     parser.add_argument("--do_lower_case",
                         action='store_true',
                         help="Set this flag if you are using an uncased model.")
     parser.add_argument("--train_batch_size",
-                        default=96,
+                        default=128,
                         type=int,
                         help="Total batch size for training.")
     parser.add_argument("--eval_batch_size",
@@ -390,8 +393,8 @@ def main():
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    if not args.do_train and not args.do_eval:
-        raise ValueError("At least one of `do_train` or `do_eval` must be True.")
+    if not args.do_train and not args.do_eval and not args.do_test:
+        raise ValueError("At least one of `do_train` `do_eval` `do_test` must be True.")
 
     if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train:
         raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
@@ -532,9 +535,9 @@ def main():
     model.to(device)
 
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        eval_examples = processor.get_test_examples(args.data_dir)
+        eval_examples = processor.get_dev_examples(args.data_dir)
         eval_features = convert_examples_to_features(eval_examples, label_list, args.max_seq_length, tokenizer)
-        logger.info("***** Running evaluation *****")
+        logger.info("***** Running evaluation on validation dataset*****")
         logger.info("  Num examples = %d", len(eval_examples))
         logger.info("  Batch size = %d", args.eval_batch_size)
         all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
@@ -587,9 +590,71 @@ def main():
 
         report = classification_report(y_true, y_pred, digits=4)
         logger.info("\n%s", report)
-        output_eval_file = os.path.join(args.output_dir, "eval_results.txt")
+        output_eval_file = os.path.join(args.output_dir, "valid_results.txt")
         with open(output_eval_file, "w") as writer:
-            logger.info("***** Eval results *****")
+            logger.info("***** Eval results on validation dataset*****")
+            logger.info("\n%s", report)
+            writer.write(report)
+
+    if args.do_test:
+        eval_examples = processor.get_test_examples(args.data_dir)
+        eval_features = convert_examples_to_features(eval_examples, label_list, args.max_seq_length, tokenizer)
+        logger.info("***** Running evaluation on test dataset*****")
+        logger.info("  Num examples = %d", len(eval_examples))
+        logger.info("  Batch size = %d", args.eval_batch_size)
+        all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
+        all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
+        all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
+        all_label_ids = torch.tensor([f.label_id for f in eval_features], dtype=torch.long)
+        all_valid_ids = torch.tensor([f.valid_ids for f in eval_features], dtype=torch.long)
+        all_lmask_ids = torch.tensor([f.label_mask for f in eval_features], dtype=torch.long)
+        eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_valid_ids,
+                                  all_lmask_ids)
+        # Run prediction for full data
+        eval_sampler = SequentialSampler(eval_data)
+        eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.eval_batch_size)
+        model.eval()
+        eval_loss, eval_accuracy = 0, 0
+        nb_eval_steps, nb_eval_examples = 0, 0
+        y_true = []
+        y_pred = []
+        label_map = {i: label for i, label in enumerate(label_list, 1)}
+        for input_ids, input_mask, segment_ids, label_ids, valid_ids, l_mask in tqdm(eval_dataloader,
+                                                                                     desc="Evaluating"):
+            input_ids = input_ids.to(device)
+            input_mask = input_mask.to(device)
+            segment_ids = segment_ids.to(device)
+            valid_ids = valid_ids.to(device)
+            label_ids = label_ids.to(device)
+            l_mask = l_mask.to(device)
+
+            with torch.no_grad():
+                logits = model(input_ids, segment_ids, input_mask, valid_ids=valid_ids, attention_mask_label=l_mask)
+
+            logits = torch.argmax(F.log_softmax(logits, dim=2), dim=2)
+            logits = logits.detach().cpu().numpy()
+            label_ids = label_ids.to('cpu').numpy()
+            input_mask = input_mask.to('cpu').numpy()
+
+            for i, label in enumerate(label_ids):
+                temp_1 = []
+                temp_2 = []
+                for j, m in enumerate(label):
+                    if j == 0:
+                        continue
+                    elif label_ids[i][j] == len(label_map):
+                        y_true.append(temp_1)
+                        y_pred.append(temp_2)
+                        break
+                    else:
+                        temp_1.append(label_map[label_ids[i][j]])
+                        temp_2.append(label_map[logits[i][j]])
+
+        report = classification_report(y_true, y_pred, digits=4)
+        # logger.info("\n%s", report)
+        output_eval_file = os.path.join(args.output_dir, "test_results.txt")
+        with open(output_eval_file, "w") as writer:
+            logger.info("***** Eval results on test dataset*****")
             logger.info("\n%s", report)
             writer.write(report)
 
