@@ -1,5 +1,16 @@
 # BERT NER
 
+- [BERT NER](#bert-ner)
+- [Requirements](#requirements)
+- [Run](#run)
+- [Result](#result)
+    - [Validation Data](#validation-data)
+    - [Test Data](#test-data)
+  - [Pre-trained NER model - download from here](#pre-trained-ner-model---download-from-here)
+- [Run prediction inside python module](#run-prediction-inside-python-module)
+- [Run web app to predict](#run-web-app-to-predict)
+- [Train Valid Test split](#train-valid-test-split)
+
 :mongolia: Use [Mongolian pre-trained BERT](https://github.com/tugstugi/mongolian-bert) for finetuning [NER](https://en.wikipedia.org/wiki/Named-entity_recognition) task on [Mongolian NER dataset](https://github.com/tugstugi/mongolian-nlp/blob/master/datasets/NER_v1.0.json.gz)
 
 :bangbang: Checkout [experiment](https://github.com/enod/mongolian-bert-ner/tree/experiment) branch for comparable to baselines result. 
